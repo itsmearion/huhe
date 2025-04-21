@@ -3,9 +3,9 @@ from asyncio import sleep
 from threading import Timer
 
 # Ganti dengan informasi bot kamu
-API_ID = 123456
-API_HASH = "your_api_hash"
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+API_ID = 27917752
+API_HASH = "bf6436f671e5363ed68edc1bb293d6d3"
+BOT_TOKEN = "7955360080:AAHTYnr-2PZBYGwH5XG0PvdJ5VZdXSIeIDA"
 
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
