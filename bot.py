@@ -27,7 +27,7 @@ async def format_handler(client, message):
     if user_id in pending_replies:
         pending_replies[user_id].cancel()
 
-    timer = Timer(600, send_admin_offline_notice, args=(client, message.chat.id))
+    timer = Timer(2, send_admin_offline_notice, args=(client, message.chat.id))
     pending_replies[user_id] = timer
     timer.start()
 
