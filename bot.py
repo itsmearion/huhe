@@ -29,7 +29,7 @@ async def start_handler(client, message):
         return
 
     last_reload_time = now
-    await message.reply("Bot ini dibuat oleh @blakeshley secara eksklusif.\nBot sedang di-reload...")
+    await message.reply("Bot sedang di-reload.\ncrafted exclusively by @blakeshley. Not for public use, don’t steal the vibe...")
     # Buat file penanda reload
     with open(RELOAD_FLAG, "w") as f:
         f.write("reload")
@@ -75,7 +75,7 @@ async def on_startup():
     if os.path.exists(RELOAD_FLAG):
         os.remove(RELOAD_FLAG)
         async with app:
-            await app.send_message("me", "Bot berhasil di-reload.")
+            await app.send_message("me", "Bot berhasil di-reload.\ncrafted exclusively by @blakeshley. Not for public use, don’t steal the vibe")
 
 app.start()
 app.loop.run_until_complete(on_startup())
