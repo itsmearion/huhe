@@ -77,6 +77,4 @@ async def on_startup():
         async with app:
             await app.send_message("me", "Bot berhasil di-reload.\ncrafted exclusively by @blakeshley. Not for public use, don’t steal the vibe")
 
-app.start()
-app.loop.run_until_complete(on_startup())
 app.run()
