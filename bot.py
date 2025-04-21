@@ -14,6 +14,12 @@ pending_tasks = {}
 last_reload_time = 0
 RELOAD_COOLDOWN = 300
 
+
+@app.on_message(filters.command("start"))
+async def start_handler(client, message):
+    await message.reply("Bot ini dibuat oleh @blakeshley secara esklusif, Dilarang keras menggunakan bot ini tanpa izin.")
+
+
 @app.on_message(filters.command("format"))
 async def format_handler(client, message):
     username = message.from_user.username or "unknown"
