@@ -16,9 +16,7 @@ pending_replies = {}
 async def format_handler(client, message):
     username = message.from_user.username or "unknown"
     text = (
-        f"silakan salin dan tempel teks dibawah sesuai orderan kamu
-
-Salutations I'm @{username}, I’d like to place an order for catalog [t.me/blakeshley] "
+        f"Salutations I'm @{username}, I’d like to place an order for catalog [t.me/blakeshley] "
         "listed at Blakeshley, Using payment method [dana, gopay, qriss, spay, ovo, bank.] "
         "The total comes to IDR 00.000 Inrush add 5k [yay/nay]. Kindly process this, Thanks a bunch."
     )
