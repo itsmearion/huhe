@@ -9,13 +9,15 @@ API_ID = 27917752
 API_HASH = "bf6436f671e5363ed68edc1bb293d6d3"
 BOT_TOKEN = "7955360080:AAHTYnr-2PZBYGwH5XG0PvdJ5VZdXSIeIDA"
 
+RELOAD_FLAG = "reload.flag"
+
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 pending_tasks = {}
 RELOAD_COOLDOWN = 300  # 5 menit
 last_reload_time = 0
 
-# Handler untuk /start yang juga me-reload bot
+# Kirim pesan jika bot berhasil di-reload
 @app.on_message(filters.command("start"))
 async def start_handler(client, message):
     global last_reload_time
@@ -28,6 +30,10 @@ async def start_handler(client, message):
 
     last_reload_time = now
     await message.reply("Bot ini dibuat oleh @blakeshley secara eksklusif.\nBot sedang di-reload...")
+    # Buat file penanda reload
+    with open(RELOAD_FLAG, "w") as f:
+        f.write("reload")
+
     await client.stop()
     os.execv(sys.executable, ['python3'] + sys.argv)
 
@@ -64,4 +70,13 @@ async def reset_timer_if_admin_replies(client, message):
         task.cancel()
     pending_tasks.clear()
 
+# Cek apakah habis reload
+async def on_startup():
+    if os.path.exists(RELOAD_FLAG):
+        os.remove(RELOAD_FLAG)
+        async with app:
+            await app.send_message("me", "Bot berhasil di-reload.")
+
+app.start()
+app.loop.run_until_complete(on_startup())
 app.run()
