@@ -1,103 +1,210 @@
-from pyrogram import Client, filters
-from asyncio import sleep, create_task
-import os
-import sys
-import time
+// Bot Telegram Antigcast (go-tdlib + goroutines)
+// Powerful version!
 
-# Konfigurasi bot
-API_ID = 27917752
-API_HASH = "bf6436f671e5363ed68edc1bb293d6d3"
-BOT_TOKEN = "7955360080:AAHTYnr-2PZBYGwH5XG0PvdJ5VZdXSIeIDA"
+package main
 
-RELOAD_FLAG = "reload.flag"
-RELOAD_COOLDOWN = 300  # 5 menit
-last_reload_time = 0
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"strings"
+	"sync"
+	"time"
 
-app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-pending_tasks = {}
+	tdlib "github.com/zelenin/go-tdlib/client"
+	_ "github.com/mattn/go-sqlite3"
+)
 
-# Handler /start — reload dengan efek dreamy aesthetic
-@app.on_message(filters.command("start"))
-async def start_handler(client, message):
-    global last_reload_time
-    now = time.time()
+type Config struct {
+	OwnerID      int64  `json:"owner_id"`
+	RequiredChat int64  `json:"required_chat"`
+	ApiID        int32  `json:"api_id"`
+	ApiHash      string `json:"api_hash"`
+}
 
-    if now - last_reload_time < RELOAD_COOLDOWN:
-        sisa = int(RELOAD_COOLDOWN - (now - last_reload_time))
-        await message.reply(f"soft winds whisper — please wait {sisa} more seconds before we bloom anew.")
-        return
+var (
+	db     *sql.DB
+	cfg    Config
+	client *tdlib.Client
+	mutex  sync.Mutex
+)
 
-    last_reload_time = now
+func main() {
+	loadConfig()
+	initDB()
+	initTdlib()
 
-    sent = await message.reply(
-        "quietly reloading under dusk...\nstitched in silence by @blakeshley — not for the crowd, let it remain ours..."
-    )
+	listener()
+}
 
-    async def reload_sequence():
-        try:
-            await sleep(3)
+func loadConfig() {
+	file, err := os.ReadFile("config.json")
+	if err != nil {
+		log.Fatal("Config error:", err)
+	}
+	json.Unmarshal(file, &cfg)
+}
 
-            # Kirim stiker transisi
-            sticker = await client.send_sticker(
-                chat_id=message.chat.id,
-                sticker="CAACAgUAAxkBAAEBRZhlm-wxEN_fYF--uhHgUCo_Zu0u7AAC9gIAAnlc2VSpczhBBQ4h-DUE"
-            )
+func initDB() {
+	var err error
+	db, err = sql.Open("sqlite3", "data.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+	db.Exec("CREATE TABLE IF NOT EXISTS blacklist (word TEXT PRIMARY KEY)")
+	db.Exec("CREATE TABLE IF NOT EXISTS whitelist (word TEXT PRIMARY KEY)")
+}
 
-            # Edit pesan dan hapus stiker
-            await sent.edit(
-                "reborn softly...\ncrafted under moonlight by @blakeshley — keep the vibe sacred."
-            )
-            await sticker.delete()
+func initTdlib() {
+	opts := tdlib.Config{
+		APIID:               cfg.ApiID,
+		APIHash:             cfg.ApiHash,
+		DatabaseDirectory:  "tdlib-db",
+		FilesDirectory:     "tdlib-files",
+		UseMessageDatabase: true,
+		UseSecretChats:     false,
+		SystemLanguageCode: "en",
+		DeviceModel:        "Server",
+		ApplicationVersion: "1.0",
+	}
 
-            await sleep(3)
-            await sent.delete()
+	client = tdlib.NewClient(tdlib.NewTdlibClient(opts))
+}
 
-        except Exception:
-            pass
+func listener() {
+	for update := range client.GetListener().Updates {
+		switch u := update.(type) {
+		case *tdlib.UpdateNewMessage:
+			go handleMessage(u.Message)
+		}
+	}
+}
 
-        with open(RELOAD_FLAG, "w") as f:
-            f.write("reload")
+func handleMessage(msg *tdlib.Message) {
+	chatID := msg.ChatID
+	fromID := msg.SenderUserID
+	text := msg.Content.(*tdlib.MessageText).Text.Text
 
-        await client.stop()
-        os.execv(sys.executable, ['python3'] + sys.argv)
+	// Filter antigcast
+	if checkBlacklist(text) && !checkWhitelist(text) {
+		deleteMsg(chatID, msg.ID)
+		return
+	}
 
-    create_task(reload_sequence())
+	// Command handling
+	if strings.HasPrefix(text, "/") {
+		deleteMsg(chatID, msg.ID)
+		isAdmin := (fromID == cfg.OwnerID) || checkAdmin(chatID, fromID)
+		if !isAdmin {
+			return
+		}
 
-# Handler /format — pesan order gaya biasa
-@app.on_message(filters.command("format"))
-async def format_handler(client, message):
-    username = message.from_user.username or "unknown"
-    text = (
-        f"Salutations I'm @{username}, I’d like to place an order for catalog [t.me/blakeshley] "
-        "listed at Blakeshley, Using payment method [dana, gopay, qriss, spay, ovo, bank.] "
-        "The total comes to IDR [00.000] Inrush add 5k [yay/nay]. Kindly process this, Thanks a bunch."
-    )
-    await message.reply(text)
+		split := strings.SplitN(text, " ", 2)
+		cmd := strings.TrimPrefix(split[0], "/")
+		args := ""
+		if len(split) > 1 {
+			args = split[1]
+		}
 
-    user_id = message.from_user.id
-    if user_id in pending_tasks:
-        pending_tasks[user_id].cancel()
+		switch cmd {
+		case "addbl":
+			addWord("blacklist", args)
+			replyAndDelete(chatID, msg.ID, "Berhasil ditambahkan ke blacklist.")
+		case "addwhite":
+			addWord("whitelist", args)
+			replyAndDelete(chatID, msg.ID, "Berhasil ditambahkan ke whitelist.")
+		case "bltext":
+			send(chatID, "Blacklist:\n"+getList("blacklist"))
+		case "whitetext":
+			send(chatID, "Whitelist:\n"+getList("whitelist"))
+		}
+	}
+}
 
-    task = create_task(delay_notice(client, message.chat.id, user_id))
-    pending_tasks[user_id] = task
+func checkAdmin(chatID, userID int64) bool {
+	r, _ := client.GetChatMember(&tdlib.GetChatMemberRequest{ChatID: chatID, UserID: userID})
+	return r.Status == "administrator" || r.Status == "creator"
+}
 
-# Delay auto-reply jika admin belum balas
-async def delay_notice(client, chat_id, user_id):
-    try:
-        await sleep(300)
-        await client.send_message(
-            chat_id,
-            "ᯓ ᡣ𐭩 the stars are still — our admin is away for a moment...\nplease wait in the calm, your message will find its way ᡣ𐭩ᡣ𐭩"
-        )
-    except Exception:
-        pass
+func deleteMsg(chatID, msgID int64) {
+	client.DeleteMessages(&tdlib.DeleteMessagesRequest{
+		ChatID: chatID,
+		MessageIDs: []int64{msgID},
+		Revoke:   true,
+	})
+}
 
-# Reset timer jika ada pesan non-command
-@app.on_message(filters.text & ~filters.command("format") & ~filters.command("start"))
-async def reset_timer_if_admin_replies(client, message):
-    for task in pending_tasks.values():
-        task.cancel()
-    pending_tasks.clear()
+func replyAndDelete(chatID, replyTo int64, text string) {
+	sent, _ := client.SendMessage(&tdlib.SendMessageRequest{
+		ChatID: chatID,
+		ReplyToMessageID: replyTo,
+		InputMessageContent: tdlib.NewInputMessageText(&tdlib.FormattedText{Text: text}, false, false),
+	})
 
-# Jalankan bot
-app.run()
+	go func() {
+		time.Sleep(2 * time.Second)
+		deleteMsg(chatID, sent.ID)
+	}()
+}
+
+func send(chatID int64, text string) {
+	client.SendMessage(&tdlib.SendMessageRequest{
+		ChatID: chatID,
+		InputMessageContent: tdlib.NewInputMessageText(&tdlib.FormattedText{Text: text}, false, false),
+	})
+}
+
+func addWord(table, word string) {
+	mutex.Lock()
+	db.Exec("INSERT OR IGNORE INTO "+table+" (word) VALUES (?)", strings.ToLower(word))
+	mutex.Unlock()
+}
+
+func getList(table string) string {
+	mutex.Lock()
+	rows, _ := db.Query("SELECT word FROM " + table)
+	mutex.Unlock()
+	defer rows.Close()
+
+	var list string
+	for rows.Next() {
+		var word string
+		rows.Scan(&word)
+		list += "- " + word + "\n"
+	}
+	return list
+}
+
+func checkBlacklist(text string) bool {
+	mutex.Lock()
+	rows, _ := db.Query("SELECT word FROM blacklist")
+	mutex.Unlock()
+	defer rows.Close()
+
+	for rows.Next() {
+		var word string
+		rows.Scan(&word)
+		if strings.Contains(strings.ToLower(text), word) {
+			return true
+		}
+	}
+	return false
+}
+
+func checkWhitelist(text string) bool {
+	mutex.Lock()
+	rows, _ := db.Query("SELECT word FROM whitelist")
+	mutex.Unlock()
+	defer rows.Close()
+
+	for rows.Next() {
+		var word string
+		rows.Scan(&word)
+		if strings.Contains(strings.ToLower(text), word) {
+			return true
+		}
+	}
+	return false
+}
